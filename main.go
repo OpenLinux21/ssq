@@ -73,7 +73,7 @@ func run() int {
 	tui.Welcome(src.ActiveDevice())
 	in := bufio.NewReader(os.Stdin)
 
-	// 阶段一：选号（手动/机选，最多 5 注）并确认。
+	// 阶段一：选号（手动/机选，最多 50 注，每 5 注一张票纸）并确认。
 	tickets, err := selectionPhase(in, src)
 	if err != nil {
 		switch {
@@ -132,12 +132,17 @@ func selectionPhase(in *bufio.Reader, src *randx.Source) ([]lotto.Ticket, error)
 			}
 			tickets = append(tickets, t)
 			tui.ShowTickets(tickets)
-		case "2", "3": // 机选一注 / 机选补满
+		case "2", "3", "4": // 机选：一注 / 一张票（5 注） / 补满剩余全部
 			want := 1
 			if choice == "3" {
+				want = lotto.SheetCapacity
+			} else if choice == "4" {
 				want = lotto.MaxTickets - len(tickets)
 			}
-			if len(tickets) >= lotto.MaxTickets || want <= 0 {
+			if remaining := lotto.MaxTickets - len(tickets); want > remaining {
+				want = remaining // 收尾时允许不足一张
+			}
+			if want <= 0 {
 				tui.Warn(fmt.Sprintf("已达到单次模拟上限 %d 注。", lotto.MaxTickets))
 				continue
 			}
@@ -150,16 +155,16 @@ func selectionPhase(in *bufio.Reader, src *randx.Source) ([]lotto.Ticket, error)
 			}
 			tui.Info(fmt.Sprintf("已机选 %d 注。", want))
 			tui.ShowTickets(tickets)
-		case "4": // 清空重选
+		case "5": // 清空重选
 			if len(tickets) == 0 {
 				tui.Warn("当前没有已选号码。")
 				continue
 			}
 			tickets = tickets[:0]
 			tui.Info("已清空全部号码，请重新选号。")
-		case "5": // 确认投注
+		case "6": // 确认投注
 			if len(tickets) == 0 {
-				tui.Warn("请先通过选项 1/2/3 选择至少 1 注号码。")
+				tui.Warn("请先通过选项 1-4 选择至少 1 注号码。")
 				continue
 			}
 			confirmed, err := confirmPhase(in, &tickets)

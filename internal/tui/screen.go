@@ -89,32 +89,58 @@ func Welcome(devPath string) {
 
 // Menu 输出选号主菜单。
 func Menu(ticketCount int) {
-	Section(fmt.Sprintf("选号（已选 %d/%d 注）", ticketCount, lotto.MaxTickets))
+	sheetCount := (ticketCount + lotto.SheetCapacity - 1) / lotto.SheetCapacity
+	Section(fmt.Sprintf("选号（已选 %d/%d 注 · %d 张）", ticketCount, lotto.MaxTickets, sheetCount))
 	fmt.Fprintln(out, "  "+Green("[1]")+" 手动选号（录入一注）")
 	fmt.Fprintln(out, "  "+Green("[2]")+" 自动机选一注")
-	fmt.Fprintln(out, "  "+Green("[3]")+" 自动机选补满剩余全部")
-	fmt.Fprintln(out, "  "+Green("[4]")+" 清空已选号码")
-	fmt.Fprintln(out, "  "+Green("[5]")+" 确认投注并模拟开奖")
+	fmt.Fprintln(out, "  "+Green("[3]")+" 自动机选一张票（5 注）")
+	fmt.Fprintln(out, "  "+Green("[4]")+" 自动机选补满剩余全部")
+	fmt.Fprintln(out, "  "+Green("[5]")+" 清空已选号码")
+	fmt.Fprintln(out, "  "+Green("[6]")+" 确认投注并模拟开奖")
 	fmt.Fprintln(out, "  "+Green("[0]")+" 退出程序")
 	if ticketCount == 0 {
-		fmt.Fprintln(out, Dim("  提示：先用 1/2/3 选号（每注 6 红 + 1 蓝），再用 5 确认。"))
+		fmt.Fprintln(out, Dim("  提示：先用 1-4 选号（每注 6 红 + 1 蓝，每张票最多 5 注），再用 6 确认。"))
 	}
 	fmt.Fprintln(out)
 }
 
 // ───────────────────────────── 号码展示 ─────────────────────────────
 
-// ShowTickets 以芯片样式展示一组投注号码。
+// sheetInner 为票纸边框内的内容宽度（显示列数）。
+const sheetInner = 47
+
+// ShowTickets 按每 lotto.SheetCapacity 注一张“票纸”分组展示投注号码，
+// 注编号全局连续，贴近真实彩票“一张纸最多 5 注”的体验。
 func ShowTickets(tickets []lotto.Ticket) {
-	for i, t := range tickets {
-		var b strings.Builder
-		for _, r := range t.Reds {
-			b.WriteString(RedBall(r))
-			b.WriteString(" ")
+	for si, sheet := range lotto.Sheets(tickets) {
+		if si > 0 {
+			fmt.Fprintln(out)
 		}
-		b.WriteString(Dim("┃"))
-		fmt.Fprintln(out, "  "+padRight(fmt.Sprintf("第 %d 注", i+1), 9)+b.String()+" "+BlueBall(t.Blue))
+		first := si*lotto.SheetCapacity + 1
+		title := fmt.Sprintf("第 %d 张 · 第 %d-%d 注", si+1, first, first+len(sheet)-1)
+		fill := sheetInner - 3 - displayWidth(title)
+		if fill < 0 {
+			fill = 0
+		}
+		fmt.Fprintln(out, "┌─ "+Cyan(title)+" "+repeatLine(fill)+"┐")
+		for i, t := range sheet {
+			fmt.Fprintln(out, "│ "+sheetRow(first+i, t)+" │")
+		}
+		fmt.Fprintln(out, "└"+repeatLine(sheetInner)+"┘")
 	}
+}
+
+// sheetRow 渲染票纸内的一行注单，固定宽度 45 列。
+func sheetRow(no int, t lotto.Ticket) string {
+	var b strings.Builder
+	b.WriteString(padRight(fmt.Sprintf("第 %d 注", no), 9))
+	for _, r := range t.Reds {
+		b.WriteString(RedBall(r))
+		b.WriteString(" ")
+	}
+	b.WriteString(Dim("┃"))
+	b.WriteString(" " + BlueBall(t.Blue))
+	return b.String()
 }
 
 // BallText 以着色两位数字渲染一注号码：“01 02 … 33 + 09”，总宽 22 列。
@@ -131,6 +157,7 @@ func ConfirmView(tickets []lotto.Ticket) {
 	Section("投注确认")
 	ShowTickets(tickets)
 	kv("投注注数", fmt.Sprintf("%d / %d 注", len(tickets), lotto.MaxTickets))
+	kv("票据张数", fmt.Sprintf("%d 张（每张最多 %d 注）", len(lotto.Sheets(tickets)), lotto.SheetCapacity))
 	kv("投注成本", fmt.Sprintf("%d 元（%d 元/注）", len(tickets)*lotto.TicketPrice, lotto.TicketPrice))
 }
 
@@ -155,9 +182,16 @@ func Report(r lotto.Result, s lotto.Stats) {
 		padLeft("红中", 5) + padLeft("蓝中", 5) + " " +
 		padRight("奖级", 8) + padRight("单注奖金", 12)
 	fmt.Fprintln(out, Bold(header))
-	fmt.Fprintln(out, Dim("  "+repeatLine(pageWidth-2)))
-
 	for i, tr := range r.Tickets {
+		// 每 SheetCapacity 注属于同一张票纸：插入带张号的分隔线。
+		if i%lotto.SheetCapacity == 0 {
+			label := fmt.Sprintf("第 %d 张", i/lotto.SheetCapacity+1)
+			fill := pageWidth - 3 - displayWidth(label)
+			if fill < 0 {
+				fill = 0
+			}
+			fmt.Fprintln(out, Dim("  "+label+" "+repeatLine(fill)))
+		}
 		blueMark := Dim("✗")
 		if tr.BlueHit {
 			blueMark = Green(padLeft("✓", 5))

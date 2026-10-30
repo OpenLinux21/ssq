@@ -17,9 +17,28 @@ const (
 	BlueMax   = 16 // 蓝球最大号码
 	BlueCount = 1  // 每注蓝球个数
 
-	TicketPrice = 2 // 单注投注金额（元）
-	MaxTickets  = 5 // 单次模拟最多投注注数
+	TicketPrice = 2  // 单注投注金额（元）
+	MaxTickets  = 50 // 单次模拟最多投注注数
+
+	// SheetCapacity 为每张“票纸”最多容纳的注数（贴近真实彩票票据：
+	// 一张纸最多打印 5 注），仅用于展示分组，不影响计奖逻辑。
+	SheetCapacity = 5
 )
+
+// Sheets 将一组投注按 SheetCapacity 注一张切分为多张“票纸”，
+// 最后一张可能不足 SheetCapacity 注。
+// 返回的分组共享底层切片，调用方不应修改其中的 Ticket。
+func Sheets(tickets []Ticket) [][]Ticket {
+	sheets := make([][]Ticket, 0, (len(tickets)+SheetCapacity-1)/SheetCapacity)
+	for start := 0; start < len(tickets); start += SheetCapacity {
+		end := start + SheetCapacity
+		if end > len(tickets) {
+			end = len(tickets)
+		}
+		sheets = append(sheets, tickets[start:end])
+	}
+	return sheets
+}
 
 // Ticket 一注双色球投注号码。
 type Ticket struct {
